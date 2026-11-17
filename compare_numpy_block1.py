@@ -6,11 +6,11 @@ import numpy as np
 sys.stdout.reconfigure(encoding="utf-8")
 
 rng = np.random.default_rng(42)
-# Списки для циклов
 
 
 def measure(fn, data):
     best = float("inf")
+    result = None
     for _ in range(3):
         start = time.perf_counter()
         result = fn(data)
@@ -62,7 +62,6 @@ if first_n > 0:
     print("Первый проверенный размер с ускорением больше 10 раз:", first_n)
 else:
     print("На проверенных размерах ускорения больше 10 раз нет.")
-print("В NumPy сумма считается одной строкой. Ускорение не растет ровно с размером массива: на больших данных влияет скорость памяти.")
 del a, values
 
 
@@ -87,7 +86,6 @@ a = rng.normal(size=1_000_000)
 values = a.tolist()
 r1, r2 = compare(stats_python, stats_numpy, values, a)
 print("Совпадение до 1e-12:", np.allclose(r1, r2, atol=1e-12, rtol=0))
-print("mean и std проще читать, чем цикл с суммами. std сначала находит среднее, затем считает отклонения от него, так меньше теряется точность при вычитании близких больших чисел.")
 
 
 # 3. sin(x) + x^2
@@ -106,7 +104,7 @@ print("\nЗадача 3")
 r1, r2 = compare(transform_python, transform_numpy, values, a)
 print("Список с числами примерно:", len(r1) * 32 / 1e6, "МБ")
 print("Данные массива:", r2.nbytes / 1e6, "МБ")
-print("С NumPy получается одна строка вместо цикла. Кроме результата нужны два временных массива: для sin(a) и a**2, по 8 МБ каждый.")
+print("Оценка памяти списка / массива:", round(len(r1) * 32 / r2.nbytes, 1))
 
 
 # 4. Ограничение значений
@@ -129,7 +127,7 @@ def clip_numpy(a):
 print("\nЗадача 4")
 compare(clip_python, clip_numpy, values, a)
 print("Изменено элементов:", np.sum((a < 0) | (a > 1)))
-print("Без строки def получилось 9 строк у цикла и 1 у NumPy, то есть в 9 раз короче. В clip сразу видны границы 0 и 1, без for и if/elif.")
+print("Строк без def: цикл 9, NumPy 1")
 
 
 # 5. Суммы строк
@@ -151,7 +149,7 @@ print("\nЗадача 5")
 matrix = rng.normal(size=(100_000, 10))
 rows = matrix.tolist()
 compare(rows_python, rows_numpy, rows, matrix)
-print("Без def получилось 7 строк против 1. sum(axis=1) проще поддерживать: сразу видно, что складываются строки, не нужно разбирать два цикла.")
+print("Строк без def: цикл 7, NumPy 1")
 
 
 # 6. Вычитание средних столбцов
@@ -177,7 +175,8 @@ def center_numpy(m):
 print("\nЗадача 6")
 r1, r2 = compare(center_python, center_numpy, rows, matrix)
 print("Средние около нуля:", np.allclose(r2.mean(axis=0), 0, atol=1e-12))
-print("Без def получилось 12 строк против 1. В цикле надо следить за i и j, а NumPy сам вычитает среднее каждого столбца.")
+print("Строк без def: цикл 12, NumPy 1")
+print("В цикле два индекса, в NumPy индексы не нужны.")
 
 
 # 7. Максимум и индекс
@@ -202,7 +201,6 @@ with_nan = a.copy()
 with_nan[0] = np.nan
 print("Цикл с NaN в начале:", maximum_python(with_nan.tolist()))
 print("nanmax и nanargmax:", np.nanmax(with_nan), np.nanargmax(with_nan))
-print("max и argmax проще ручного поиска. Если первым стоит NaN, цикл оставляет его максимумом, а nanmax ищет среди остальных чисел.")
 
 
 # 8. Положительные элементы
@@ -218,8 +216,7 @@ print("\nЗадача 8")
 r1, r2 = compare(positive_python, positive_numpy, values, a)
 print("Список с числами примерно:", len(r1) * 32 / 1e6, "МБ")
 print("Данные массива:", r2.nbytes / 1e6, "МБ")
-print("Оба варианта короткие и понятные. Массив занимает примерно в 4 раза меньше памяти: 8 байт на число вместо 24 байт на число и 8 на ссылку.")
-print("Память списка указана вместе с числами, хотя при отборе копируются только ссылки на них.")
+print("Оценка памяти списка / массива:", round(len(r1) * 32 / r2.nbytes, 1))
 
 
 # 9. Модуль на месте
@@ -253,7 +250,6 @@ print(f"Ускорение: {t1 / t2:.2f} раз")
 print("Результаты совпадают:", np.allclose(r1, r2))
 print("Цикл вернул тот же список:", r1 is test_python)
 print("NumPy вернул тот же массив:", r2 is test_numpy)
-print("out=a записывает ответ в тот же массив, это проще цикла и не требует места под второй массив. Копии перед повторами нужны для одинаковых исходных данных, их создание не входит в замер.")
 
 
 # 10. Два условия
@@ -271,33 +267,3 @@ def interval_numpy(a):
 
 print("\nЗадача 10")
 compare(interval_python, interval_numpy, values, a)
-print("В Python условие читается проще, зато в NumPy весь отбор занимает одну строку. Скобки обязательны, потому что & выполняется раньше сравнений, а and для двух массивов не подходит.")
-
-
-# 11. Расстояния
-def distances_python(data):
-    x, y = data
-    result = []
-    for i in range(len(x)):
-        row = []
-        for j in range(len(y)):
-            total = 0.0
-            for k in range(3):
-                total += (x[i][k] - y[j][k]) ** 2
-            row.append(math.sqrt(total))
-        result.append(row)
-    return result
-
-
-def distances_numpy(data):
-    x, y = data
-    difference = x[:, None, :] - y[None, :, :]
-    return np.sqrt((difference ** 2).sum(axis=2))
-
-
-print("\nЗадача 11")
-x = rng.normal(size=(1000, 3))
-y = rng.normal(size=(1000, 3))
-compare(distances_python, distances_numpy, (x.tolist(), y.tolist()), (x, y))
-print("Массив разностей: 1000 * 1000 * 3 * 8 = 24 МБ, плюс память на квадраты и результат.")
-print("NumPy считает быстрее и короче, но временные массивы занимают много памяти. Можно считать расстояния по частям или через суммы квадратов и X @ Y.T, чтобы не создавать массив (1000, 1000, 3).")
